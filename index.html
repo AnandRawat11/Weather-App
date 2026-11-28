@@ -1,0 +1,2494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Storm & Disaster Early-Warning Board | Command Center</title>
+  
+  <!-- Tailwind CSS v3 with Plugins -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- React 18 & ReactDOM CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone for JSX interpretation in browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              400: '#60a5fa',
+              500: '#3b82f6',
+              600: '#2563eb',
+            },
+            slate: {
+              750: '#283548',
+              850: '#152033',
+              925: '#0b1120'
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'radar-sweep': 'radarSweep 4s linear infinite',
+            'float-gentle': 'floatGentle 4s ease-in-out infinite',
+            'scanline': 'scanline 8s linear infinite'
+          },
+          keyframes: {
+            radarSweep: {
+              '0%': { transform: 'rotate(0deg)' },
+              '100%': { transform: 'rotate(360deg)' }
+            },
+            floatGentle: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-4px)' }
+            },
+            scanline: {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(1000%)' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Custom Styles: Full Page Layout & Control-Room Visuals -->
+  <style data-purpose="custom-styling">
+    html, body {
+      width: 100%;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      background-color: #edf2f8;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.3s ease;
+    }
+
+    body.dark {
+      background-color: #0b1120;
+    }
+
+    /* Subtle custom card shadow matching Figma shot */
+    .dashboard-card {
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.12), 0 2px 6px -1px rgba(148, 163, 184, 0.08);
+      border: 1px solid rgba(241, 245, 249, 0.9);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .dashboard-card:hover {
+      box-shadow: 0 10px 25px -4px rgba(148, 163, 184, 0.18);
+    }
+
+    .dark .dashboard-card {
+      background: #1e293b;
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
+    }
+
+    .dark .dashboard-card:hover {
+      box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #475569;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    /* Radar animation effect */
+    @keyframes radarPulse {
+      0% {
+        transform: scale(0.9);
+        opacity: 0.85;
+      }
+      50% {
+        transform: scale(1.7);
+        opacity: 0.35;
+      }
+      100% {
+        transform: scale(2.5);
+        opacity: 0;
+      }
+    }
+
+    .radar-ring {
+      position: absolute;
+      border-radius: 9999px;
+      animation: radarPulse 2.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+    }
+
+    /* Pulsing storm cell halo */
+    @keyframes stormPing {
+      0% { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(2.8); opacity: 0; }
+    }
+    .storm-ping {
+      animation: stormPing 1.8s ease-out infinite;
+    }
+  </style>
+</head>
+<body class="w-full min-h-screen text-slate-800 dark:text-slate-100 flex flex-col">
+
+  <!-- React Mount Point (Full Page Width & Height) -->
+  <div id="root" class="w-full min-h-screen flex flex-col"></div>
+
+  <!-- Main React Application -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // ==========================================
+    // AUDIO NOTIFICATION HELPER (Web Audio API)
+    // ==========================================
+    const playAlertChime = (severity = 'moderate') => {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        if (severity === 'critical') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(880, now);
+          osc.frequency.exponentialRampToValueAtTime(440, now + 0.35);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+          osc.start(now);
+          osc.stop(now + 0.35);
+        } else {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, now); // D5
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.25); // A5
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.25);
+        }
+      } catch (e) {
+        // Audio handled safely
+      }
+    };
+
+    // ==========================================
+    // MOCK DATA DATASETS & CONFIG
+    // ==========================================
+    const INITIAL_ALERTS = [
+      {
+        id: "ALT-2024-001",
+        timestamp: "Sun, 2 Jun • Strong winds",
+        fullTime: "Sun, 2 Jun • 08:30 AM",
+        title: "Strong Coastal Winds",
+        category: "Windstorm",
+        region: "Eastern Australia",
+        regionKey: "east",
+        severity: "critical",
+        temp: "24°",
+        high: "20",
+        low: "18",
+        icon: "wind",
+        windSpeed: "88 km/h",
+        rainfall: "45 mm",
+        pressure: "998 hPa",
+        description: "Destructive gale gusts along coastal ridges. Downed powerlines and fallen tree branches reported across Sector 4.",
+        advisory: "Stay indoors. Secure loose outdoor fixtures. Avoid coastal marine routes.",
+        isAcknowledged: false,
+        active: true
+      },
+      {
+        id: "ALT-2024-002",
+        timestamp: "Mon, 3 Jun • Rain lightning",
+        fullTime: "Mon, 3 Jun • 04:15 AM",
+        title: "Rain lightning",
+        category: "Thunderstorm",
+        region: "Northern Australia",
+        regionKey: "north",
+        severity: "high",
+        temp: "19°",
+        high: "20",
+        low: "18",
+        icon: "cloud-lightning",
+        windSpeed: "62 km/h",
+        rainfall: "120 mm",
+        pressure: "1002 hPa",
+        description: "Intense electrical storm cells coupled with rapid precipitation in low-lying river basins.",
+        advisory: "Move to higher ground. Do not drive through flooded crossings.",
+        isAcknowledged: false,
+        active: true
+      },
+      {
+        id: "ALT-2024-003",
+        timestamp: "Sun, 2 Jun • Extreme Heat",
+        fullTime: "Sun, 2 Jun • 11:45 AM",
+        title: "Severe Heatwave Spike",
+        category: "Thermal",
+        region: "Northern Australia",
+        regionKey: "north",
+        severity: "critical",
+        temp: "32°",
+        high: "36",
+        low: "25",
+        icon: "sun",
+        windSpeed: "28 km/h",
+        rainfall: "0 mm",
+        pressure: "1016 hPa",
+        description: "Sustained high temperatures exceeding historical averages by 6.5°C. High dehydration risk.",
+        advisory: "Civic cooling centers activated. Limit daytime outdoor exposure.",
+        isAcknowledged: false,
+        active: true
+      },
+      {
+        id: "ALT-2024-004",
+        timestamp: "Mon, 3 Jun • Coastal Drizzle",
+        fullTime: "Mon, 3 Jun • 01:20 PM",
+        title: "Localized Drizzle & Damp Roads",
+        category: "Precipitation",
+        region: "South Australia",
+        regionKey: "south",
+        severity: "low",
+        temp: "15°",
+        high: "17",
+        low: "12",
+        icon: "cloud-drizzle",
+        windSpeed: "22 km/h",
+        rainfall: "12 mm",
+        pressure: "1022 hPa",
+        description: "Persistent light drizzle causing damp road surfaces and minor visibility reduction in transit corridors.",
+        advisory: "Drive with headlights on. Regular traffic operations permitted.",
+        isAcknowledged: true,
+        active: true
+      }
+    ];
+
+    const SIMULATION_EVENT_POOL = [
+      {
+        title: "Tropical Cyclone Alert Cat-4",
+        category: "Cyclone",
+        region: "Northern Australia",
+        regionKey: "north",
+        severity: "critical",
+        temp: "31°",
+        high: "34",
+        low: "26",
+        icon: "disc",
+        windSpeed: "155 km/h",
+        rainfall: "210 mm",
+        pressure: "978 hPa",
+        description: "Category 4 tropical cyclone eye wall tracking southwest toward coastal population centers.",
+        advisory: "Mandatory evacuation in flood zones. Emergency shelter protocol active."
+      },
+      {
+        title: "Bushfire Flare-Up Warning",
+        category: "Wildfire",
+        region: "Eastern Australia",
+        regionKey: "east",
+        severity: "critical",
+        temp: "35°",
+        high: "38",
+        low: "24",
+        icon: "flame",
+        windSpeed: "54 km/h",
+        rainfall: "0 mm",
+        pressure: "1008 hPa",
+        description: "Rapid fire front advancement driven by erratic dry westerly wind shifts.",
+        advisory: "Implement bushfire survival plans. High-pressure aerial water tankers deployed."
+      },
+      {
+        title: "Severe Hail & Microburst",
+        category: "Severe Storm",
+        region: "South Australia",
+        regionKey: "south",
+        severity: "high",
+        temp: "14°",
+        high: "16",
+        low: "10",
+        icon: "cloud-rain",
+        windSpeed: "75 km/h",
+        rainfall: "40 mm",
+        pressure: "1004 hPa",
+        description: "Radar detected golf-ball sized hail cores affecting transit corridors.",
+        advisory: "Protect motor vehicles and remain inside fortified buildings."
+      },
+      {
+        title: "Coastal Storm Surge Advisory",
+        category: "Oceanic Surge",
+        region: "Western Australia",
+        regionKey: "west",
+        severity: "moderate",
+        temp: "18°",
+        high: "20",
+        low: "15",
+        icon: "cloud-rain",
+        windSpeed: "50 km/h",
+        rainfall: "25 mm",
+        pressure: "1012 hPa",
+        description: "King tide alignment producing 1.8m astronomical surge above normal high water mark.",
+        advisory: "Avoid beaches, breakwalls, and low-lying boat ramps."
+      },
+      {
+        title: "Flash Flood Warning",
+        category: "Flooding",
+        region: "Northern Australia",
+        regionKey: "north",
+        severity: "critical",
+        temp: "22°",
+        high: "24",
+        low: "18",
+        icon: "cloud-lightning",
+        windSpeed: "68 km/h",
+        rainfall: "180 mm",
+        pressure: "994 hPa",
+        description: "Rapid runoff causing instantaneous overflow of tributary catchments.",
+        advisory: "Avoid all submerged bridge crossings and seek elevated ground."
+      }
+    ];
+
+    const REGIONS_DATA = [
+      {
+        id: "north",
+        name: "Northern Australia",
+        temp: "32°",
+        numericTemp: 32,
+        icon: "sun",
+        iconColor: "text-amber-500",
+        badgeColor: "bg-rose-500",
+        shadowColor: "shadow-rose-500/40",
+        ringColor: "ring-rose-400/20",
+        textColor: "text-rose-500",
+        threat: "Critical",
+        threatBg: "bg-rose-500/10 text-rose-600 border-rose-200",
+        top: "top-10",
+        left: "left-[48%]",
+        pinClass: "absolute top-10 left-[48%] -translate-x-1/2",
+        wind: "58 km/h",
+        rainfall: "120 mm",
+        pressure: "1002 hPa",
+        rescueTeam: "NDRF Swift Water Alpha (24 Responders)"
+      },
+      {
+        id: "west",
+        name: "Western Australia",
+        temp: "19°",
+        numericTemp: 19,
+        icon: "cloud-rain",
+        iconColor: "text-emerald-500",
+        badgeColor: "bg-emerald-500",
+        shadowColor: "shadow-emerald-500/40",
+        ringColor: "ring-emerald-400/20",
+        textColor: "text-emerald-500",
+        threat: "Moderate",
+        threatBg: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
+        top: "top-[48%]",
+        left: "left-[28%]",
+        pinClass: "absolute top-[48%] left-[28%] -translate-x-1/2",
+        wind: "42 km/h",
+        rainfall: "58 mm",
+        pressure: "1014 hPa",
+        rescueTeam: "Aeromedical Lifeline Division (12 Responders)"
+      },
+      {
+        id: "east",
+        name: "Eastern Australia",
+        temp: "27°",
+        numericTemp: 27,
+        icon: "cloud-sun",
+        iconColor: "text-amber-500",
+        badgeColor: "bg-amber-500",
+        shadowColor: "shadow-amber-500/40",
+        ringColor: "ring-amber-400/20",
+        textColor: "text-amber-500",
+        threat: "Critical",
+        threatBg: "bg-amber-500/10 text-amber-600 border-amber-200",
+        top: "top-[42%]",
+        left: "right-[22%]",
+        pinClass: "absolute top-[42%] right-[22%]",
+        wind: "88 km/h",
+        rainfall: "45 mm",
+        pressure: "998 hPa",
+        rescueTeam: "Coastal Search & Rescue Bravo (18 Responders)"
+      },
+      {
+        id: "south",
+        name: "South Australia",
+        temp: "15°",
+        numericTemp: 15,
+        icon: "cloud-drizzle",
+        iconColor: "text-blue-500",
+        badgeColor: "bg-blue-500",
+        shadowColor: "shadow-blue-500/40",
+        ringColor: "ring-blue-400/20",
+        textColor: "text-blue-500",
+        threat: "Low",
+        threatBg: "bg-blue-500/10 text-blue-600 border-blue-200",
+        top: "bottom-10",
+        left: "left-[56%]",
+        pinClass: "absolute bottom-10 left-[56%]",
+        wind: "22 km/h",
+        rainfall: "12 mm",
+        pressure: "1022 hPa",
+        rescueTeam: "Urban Disaster Relief Unit Echo (16 Responders)"
+      }
+    ];
+
+    const INITIAL_RESCUE_TEAMS = [
+      { id: "RT-01", name: "NDRF Swift Water Rescue Alpha", region: "Northern Australia", status: "Deployed", count: 24, equip: "4 Zodiac Rafts, Drones", activeCase: "Fitzroy River Evac" },
+      { id: "RT-02", name: "Coastal Rapid Response Bravo", region: "Eastern Australia", status: "En-Route", count: 18, equip: "Amphibious APVs, Winches", activeCase: "Gale-Force Powerline Clearance" },
+      { id: "RT-03", name: "Aeromedical Lifeline Division", region: "Western Australia", status: "Standby", count: 12, equip: "2 Rescue Helos, Trauma ICU", activeCase: "Rapid Evacuation Readiness" },
+      { id: "RT-04", name: "Tactical Wildfire Taskforce", region: "Eastern Australia", status: "Deployed", count: 30, equip: "6 Heavy Tankers, Flir Cams", activeCase: "Perimeter Line Firebreak" },
+      { id: "RT-05", name: "Urban Disaster Relief Echo", region: "South Australia", status: "Standby", count: 16, equip: "Acoustic Sensors, Shoring", activeCase: "Structural Inspection Base" }
+    ];
+
+    const INITIAL_SHELTERS = [
+      { id: "SH-01", name: "Northern Civic Emergency Refuge", region: "Northern Australia", occupied: 850, capacity: 1000, medical: "Active", backup: "100% Diesel", foodStock: "92%" },
+      { id: "SH-02", name: "East Coast High School Relief Hub", region: "Eastern Australia", occupied: 1200, capacity: 1500, medical: "Active", backup: "Hybrid Grid", foodStock: "86%" },
+      { id: "SH-03", name: "Victoria Community Multi-Hall", region: "South Australia", occupied: 320, capacity: 800, medical: "Standby", backup: "Grid Nominal", foodStock: "95%" },
+      { id: "SH-04", name: "Perth West Sports Complex", region: "Western Australia", occupied: 140, capacity: 2500, medical: "Ready", backup: "Dual Gen Ready", foodStock: "98%" }
+    ];
+
+    const INITIAL_SUPPLIES = [
+      { item: "Potable Drinking Water", allocated: 41200, total: 50000, unit: "Liters", percent: 82, status: "Stable" },
+      { item: "MRE Emergency Meal Packs", allocated: 14600, total: 18000, unit: "Packs", percent: 81, status: "Good" },
+      { item: "Trauma & Emergency Medical Kits", allocated: 2980, total: 3500, unit: "Kits", percent: 85, status: "High Demand" },
+      { item: "Heavy-Duty Inflatable Rafts", allocated: 31, total: 35, unit: "Boats", percent: 89, status: "Critical" },
+      { item: "Satellite Emergency Radios", allocated: 94, total: 120, unit: "Units", percent: 78, status: "Active" }
+    ];
+
+    const PROJECT_INFO = {
+      title: "Storm & Disaster Early-Warning Board",
+      batch: "Batch No. 2",
+      section: "Section 3AC",
+      semester: "Semester 5",
+      submissionDate: "21/09/26",
+      mentor: "Anurag Das",
+      team: [
+        { sNo: 1, name: "AKASH SONI", roll: "2415000152", role: "Team Lead & Frontend Developer" },
+        { sNo: 2, name: "AKSHAT KARIDHAL", roll: "2415000165", role: "UI/UX Designer" },
+        { sNo: 3, name: "ANAND RAWAT", roll: "2415000201", role: "Map & Alert Logic Developer" },
+        { sNo: 4, name: "ANANYA KUSHWAH", roll: "2415000208", role: "Resource Panel & Banner Developer" },
+        { sNo: 5, name: "ANKUR THENUA", roll: "2415000240", role: "Testing & Documentation Lead" }
+      ]
+    };
+
+    // Chart dataset presets for graph functionality
+    const CHART_DATASETS = {
+      Hourly: {
+        points: [
+          { time: "0 AM", val: 18, unit: "°", x: 30, y: 85 },
+          { time: "3 AM", val: 19, unit: "°", x: 95, y: 75 },
+          { time: "6 AM", val: 16, unit: "°", x: 145, y: 95 },
+          { time: "9 AM", val: 27, unit: "°", x: 205, y: 25 },
+          { time: "11 AM", val: 25, unit: "°", x: 255, y: 45 },
+          { time: "1 PM", val: 24, unit: "°", x: 320, y: 55 },
+          { time: "3 PM", val: 22, unit: "°", x: 370, y: 65 },
+          { time: "5 PM", val: 17, unit: "°", x: 410, y: 90 },
+          { time: "7 PM", val: 21, unit: "°", x: 450, y: 70 }
+        ],
+        path: "M 30,85 C 55,80 75,55 95,75 C 115,85 125,95 145,95 C 165,95 185,25 205,25 C 225,25 235,45 255,45 C 275,45 295,55 320,55 C 350,55 385,90 410,90 C 430,90 440,70 450,70",
+        gradientPath: "M 30,85 C 55,80 75,55 95,75 C 115,85 125,95 145,95 C 165,95 185,25 205,25 C 225,25 235,45 255,45 C 275,45 295,55 320,55 C 350,55 385,90 410,90 C 430,90 440,70 450,70 L 450,130 L 30,130 Z",
+        yLabels: ["30°", "25°", "20°", "15°", "0°"],
+        color: "#3b82f6"
+      },
+      Weekly: {
+        points: [
+          { time: "Mon", val: 19, unit: "°", x: 30, y: 78 },
+          { time: "Tue", val: 17, unit: "°", x: 95, y: 88 },
+          { time: "Wed", val: 20, unit: "°", x: 145, y: 72 },
+          { time: "Thu", val: 26, unit: "°", x: 205, y: 35 },
+          { time: "Fri", val: 28, unit: "°", x: 255, y: 22 },
+          { time: "Sat", val: 27, unit: "°", x: 320, y: 28 },
+          { time: "Sun", val: 24, unit: "°", x: 370, y: 50 },
+          { time: "Next", val: 22, unit: "°", x: 450, y: 64 }
+        ],
+        path: "M 30,78 C 65,85 85,88 95,88 C 115,88 130,72 145,72 C 175,72 195,35 205,35 C 225,35 240,22 255,22 C 285,22 305,28 320,28 C 345,28 355,50 370,50 C 400,50 430,64 450,64",
+        gradientPath: "M 30,78 C 65,85 85,88 95,88 C 115,88 130,72 145,72 C 175,72 195,35 205,35 C 225,35 240,22 255,22 C 285,22 305,28 320,28 C 345,28 355,50 370,50 C 400,50 430,64 450,64 L 450,130 L 30,130 Z",
+        yLabels: ["30°", "25°", "20°", "15°", "0°"],
+        color: "#f59e0b"
+      },
+      Pressure: {
+        points: [
+          { time: "0 AM", val: 1018, unit: "hPa", x: 30, y: 30 },
+          { time: "3 AM", val: 1016, unit: "hPa", x: 95, y: 40 },
+          { time: "6 AM", val: 1012, unit: "hPa", x: 145, y: 60 },
+          { time: "9 AM", val: 998, unit: "hPa", x: 205, y: 105 },
+          { time: "11 AM", val: 994, unit: "hPa", x: 255, y: 115 },
+          { time: "1 PM", val: 990, unit: "hPa", x: 320, y: 120 },
+          { time: "3 PM", val: 996, unit: "hPa", x: 370, y: 98 },
+          { time: "5 PM", val: 1004, unit: "hPa", x: 410, y: 80 },
+          { time: "7 PM", val: 1010, unit: "hPa", x: 450, y: 65 }
+        ],
+        path: "M 30,30 C 65,35 85,40 95,40 C 120,40 135,60 145,60 C 175,60 190,105 205,105 C 225,105 240,115 255,115 C 285,115 305,120 320,120 C 345,120 355,98 370,98 C 390,98 400,80 410,80 C 430,80 440,65 450,65",
+        gradientPath: "M 30,30 C 65,35 85,40 95,40 C 120,40 135,60 145,60 C 175,60 190,105 205,105 C 225,105 240,115 255,115 C 285,115 305,120 320,120 C 345,120 355,98 370,98 C 390,98 400,80 410,80 C 430,80 440,65 450,65 L 450,130 L 30,130 Z",
+        yLabels: ["1020", "1010", "1000", "990", "980"],
+        color: "#ef4444"
+      },
+      Wind: {
+        points: [
+          { time: "0 AM", val: 24, unit: "km/h", x: 30, y: 95 },
+          { time: "3 AM", val: 32, unit: "km/h", x: 95, y: 80 },
+          { time: "6 AM", val: 45, unit: "km/h", x: 145, y: 65 },
+          { time: "9 AM", val: 88, unit: "km/h", x: 205, y: 20 },
+          { time: "11 AM", val: 78, unit: "km/h", x: 255, y: 32 },
+          { time: "1 PM", val: 65, unit: "km/h", x: 320, y: 48 },
+          { time: "3 PM", val: 52, unit: "km/h", x: 370, y: 60 },
+          { time: "5 PM", val: 40, unit: "km/h", x: 410, y: 75 },
+          { time: "7 PM", val: 30, unit: "km/h", x: 450, y: 88 }
+        ],
+        path: "M 30,95 C 65,90 85,80 95,80 C 120,80 135,65 145,65 C 175,65 190,20 205,20 C 225,20 240,32 255,32 C 285,32 305,48 320,48 C 345,48 355,60 370,60 C 390,60 400,75 410,75 C 430,75 440,88 450,88",
+        gradientPath: "M 30,95 C 65,90 85,80 95,80 C 120,80 135,65 145,65 C 175,65 190,20 205,20 C 225,20 240,32 255,32 C 285,32 305,48 320,48 C 345,48 355,60 370,60 C 390,60 400,75 410,75 C 430,75 440,88 450,88 L 450,130 L 30,130 Z",
+        yLabels: ["100k", "75k", "50k", "25k", "0k"],
+        color: "#10b981"
+      }
+    };
+
+    // ==========================================
+    // MAIN APP ROOT COMPONENT (FULL-PAGE REACT)
+    // ==========================================
+    function App() {
+      // Primary States
+      const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+      const [rescueTeams, setRescueTeams] = useState(INITIAL_RESCUE_TEAMS);
+      const [shelters, setShelters] = useState(INITIAL_SHELTERS);
+      const [supplies, setSupplies] = useState(INITIAL_SUPPLIES);
+      
+      const [currentView, setCurrentView] = useState("dashboard"); // dashboard, analytics, map, liveFeed, resources
+      const [selectedRegion, setSelectedRegion] = useState("all");
+      const [selectedDay, setSelectedDay] = useState("Sat");
+      const [searchQuery, setSearchQuery] = useState("");
+      const [isDarkMode, setIsDarkMode] = useState(false);
+      const [isSimulating, setIsSimulating] = useState(true);
+      const [simSpeed, setSimSpeed] = useState(1);
+      const [soundEnabled, setSoundEnabled] = useState(true);
+      const [showProjectModal, setShowProjectModal] = useState(false);
+      const [showNotificationTray, setShowNotificationTray] = useState(false);
+      const [bannerDismissed, setBannerDismissed] = useState(false);
+      const [liveSeconds, setLiveSeconds] = useState(0);
+      
+      // Interactive Chart States
+      const [chartMetric, setChartMetric] = useState("Hourly"); // Hourly, Weekly, Pressure, Wind
+      const [hoveredTrendPoint, setHoveredTrendPoint] = useState(CHART_DATASETS.Hourly.points[3]);
+      const [precipitationMetric, setPrecipitationMetric] = useState("rain"); // rain, prob, runoff
+      const [mapLayer, setMapLayer] = useState("temp"); // temp, radar, satellite
+      const [inspectingAlert, setInspectingAlert] = useState(null);
+
+      // Hero dynamic values based on selection
+      const [activeHeroTemp, setActiveHeroTemp] = useState(27);
+      const [activeHeroCondition, setActiveHeroCondition] = useState("Sunny Cloudy");
+
+      // Auto update Lucide icons whenever DOM changes
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      });
+
+      // Synchronize dark mode class to document body
+      useEffect(() => {
+        if (isDarkMode) {
+          document.body.classList.add('dark');
+        } else {
+          document.body.classList.remove('dark');
+        }
+      }, [isDarkMode]);
+
+      // Clock and Simulation JavaScript Timer
+      useEffect(() => {
+        const clockInterval = setInterval(() => {
+          setLiveSeconds(prev => prev + 1);
+        }, 1000);
+        return () => clearInterval(clockInterval);
+      }, []);
+
+      // Real-Time Event Feed Generator Timer (Pure Client-Side Timers)
+      useEffect(() => {
+        if (!isSimulating) return;
+
+        const baseInterval = 12000 / simSpeed;
+        const simTimer = setInterval(() => {
+          const randomTemplate = SIMULATION_EVENT_POOL[Math.floor(Math.random() * SIMULATION_EVENT_POOL.length)];
+          const newAlertId = "ALT-" + Date.now().toString().slice(-4);
+          const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          
+          const newAlert = {
+            id: newAlertId,
+            timestamp: `Today • ${nowStr} • ${randomTemplate.title}`,
+            fullTime: `Today • ${nowStr}`,
+            title: randomTemplate.title,
+            category: randomTemplate.category,
+            region: randomTemplate.region,
+            regionKey: randomTemplate.regionKey,
+            severity: randomTemplate.severity,
+            temp: randomTemplate.temp,
+            high: randomTemplate.high,
+            low: randomTemplate.low,
+            icon: randomTemplate.icon,
+            windSpeed: randomTemplate.windSpeed,
+            rainfall: randomTemplate.rainfall,
+            pressure: randomTemplate.pressure || "996 hPa",
+            description: randomTemplate.description,
+            advisory: randomTemplate.advisory,
+            isAcknowledged: false,
+            active: true
+          };
+
+          setAlerts(prev => [newAlert, ...prev.slice(0, 9)]);
+          setBannerDismissed(false);
+          
+          if (soundEnabled) {
+            playAlertChime(randomTemplate.severity);
+          }
+        }, baseInterval);
+
+        return () => clearInterval(simTimer);
+      }, [isSimulating, simSpeed, soundEnabled]);
+
+      // Trigger immediate test alert manually
+      const triggerManualAlert = (severity = 'critical') => {
+        const matches = SIMULATION_EVENT_POOL.filter(e => severity === 'all' || e.severity === severity);
+        const item = matches.length > 0 ? matches[Math.floor(Math.random() * matches.length)] : SIMULATION_EVENT_POOL[0];
+        const newAlertId = "ALT-" + Date.now().toString().slice(-4);
+        const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const manualAlert = {
+          id: newAlertId,
+          timestamp: `Now • ${nowStr} • ${item.title}`,
+          fullTime: `Now • ${nowStr}`,
+          title: item.title,
+          category: item.category,
+          region: item.region,
+          regionKey: item.regionKey,
+          severity: item.severity,
+          temp: item.temp,
+          high: item.high,
+          low: item.low,
+          icon: item.icon,
+          windSpeed: item.windSpeed,
+          rainfall: item.rainfall,
+          pressure: item.pressure || "992 hPa",
+          description: item.description,
+          advisory: item.advisory,
+          isAcknowledged: false,
+          active: true
+        };
+
+        setAlerts(prev => [manualAlert, ...prev.slice(0, 9)]);
+        setBannerDismissed(false);
+        if (soundEnabled) {
+          playAlertChime(item.severity);
+        }
+      };
+
+      // Highest active severity calculation
+      const topCriticalAlert = useMemo(() => {
+        return alerts.find(a => !a.isAcknowledged && a.severity === 'critical') || 
+               alerts.find(a => a.severity === 'critical') || 
+               alerts[0];
+      }, [alerts]);
+
+      // Filtered alerts based on search query and region
+      const filteredAlerts = useMemo(() => {
+        return alerts.filter(a => {
+          const matchesQuery = searchQuery === "" || 
+            a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            a.region.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            a.severity.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            a.category.toLowerCase().includes(searchQuery.toLowerCase());
+          
+          const matchesRegion = selectedRegion === "all" || a.regionKey === selectedRegion;
+          return matchesQuery && matchesRegion;
+        });
+      }, [alerts, searchQuery, selectedRegion]);
+
+      // Acknowledge alert handler
+      const handleAcknowledge = (id) => {
+        setAlerts(prev => prev.map(a => a.id === id ? { ...a, isAcknowledged: true } : a));
+      };
+
+      // Deploy team action handler
+      const handleDeployTeam = (teamId) => {
+        setRescueTeams(prev => prev.map(t => {
+          if (t.id === teamId) {
+            return { ...t, status: t.status === "Deployed" ? "Standby" : "Deployed" };
+          }
+          return t;
+        }));
+        if (soundEnabled) playAlertChime('low');
+      };
+
+      // Forecast days data
+      const forecastDays = [
+        { day: "Mon", date: "27 May", icon: "cloud-sun", temp: "19°", num: 19, cond: "Sunny Cloudy", high: 22, low: 14 },
+        { day: "Tue", date: "28 May", icon: "cloud-rain", temp: "17°", num: 17, cond: "Rain & Showers", high: 20, low: 13 },
+        { day: "Wed", date: "29 May", icon: "cloud-lightning", temp: "20°", num: 20, cond: "Rain Lightning", high: 23, low: 16 },
+        { day: "Thu", date: "30 May", icon: "sun", temp: "26°", num: 26, cond: "Clear Sunny", high: 28, low: 18 },
+        { day: "Fri", date: "31 May", icon: "cloud-sun", temp: "28°", num: 28, cond: "Partly Cloudy", high: 30, low: 19 },
+        { day: "Sat", date: "1 June", icon: "cloud-sun", temp: "27°", num: 27, cond: "Sunny Cloudy", high: 29, low: 15 },
+        { day: "Sun", date: "2 June", icon: "cloud", temp: "24°", num: 24, cond: "Strong Winds", high: 25, low: 16 }
+      ];
+
+      // Handle selecting a forecast day
+      const handleSelectDay = (f) => {
+        setSelectedDay(f.day);
+        setActiveHeroTemp(f.num);
+        setActiveHeroCondition(f.cond);
+      };
+
+      // Precipitation bars data with mode switching
+      const precipitationBars = useMemo(() => {
+        if (precipitationMetric === "rain") {
+          return [
+            { day: "Mon", percent: 55, label: "18mm", sub: "Light Rain" },
+            { day: "Tue", percent: 85, label: "38mm", sub: "Heavy Downpour" },
+            { day: "Wed", percent: 35, label: "12mm", sub: "Drizzle" },
+            { day: "Thu", percent: 68, label: "26mm", sub: "Moderate Rain" },
+            { day: "Fri", percent: 45, label: "15mm", sub: "Passing Squall" },
+            { day: "Sat", percent: 90, label: "45mm", sub: "Storm Inundation" },
+            { day: "Sun", percent: 70, label: "28mm", sub: "Coastal Showers" }
+          ];
+        } else if (precipitationMetric === "prob") {
+          return [
+            { day: "Mon", percent: 40, label: "40%", sub: "Scattered" },
+            { day: "Tue", percent: 95, label: "95%", sub: "Imminent" },
+            { day: "Wed", percent: 30, label: "30%", sub: "Isolated" },
+            { day: "Thu", percent: 75, label: "75%", sub: "Likely" },
+            { day: "Fri", percent: 50, label: "50%", sub: "Moderate" },
+            { day: "Sat", percent: 99, label: "99%", sub: "Severe" },
+            { day: "Sun", percent: 65, label: "65%", sub: "Frequent" }
+          ];
+        } else {
+          return [
+            { day: "Mon", percent: 30, label: "Low", sub: "Nominal" },
+            { day: "Tue", percent: 78, label: "High", sub: "River Surge" },
+            { day: "Wed", percent: 20, label: "Low", sub: "Normal" },
+            { day: "Thu", percent: 60, label: "Med", sub: "Urban Catchment" },
+            { day: "Fri", percent: 40, label: "Med", sub: "Sustained" },
+            { day: "Sat", percent: 92, label: "CRITICAL", sub: "Flash Basin Breach" },
+            { day: "Sun", percent: 68, label: "High", sub: "Elevated" }
+          ];
+        }
+      }, [precipitationMetric]);
+
+      // Active dataset for temperature trend graph
+      const activeChartData = CHART_DATASETS[chartMetric] || CHART_DATASETS.Hourly;
+
+      // Format ticking live time
+      const formatTime = () => {
+        const d = new Date();
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      };
+
+      return (
+        <div className="w-full min-h-screen p-2 sm:p-3 md:p-4 lg:p-5 flex flex-col md:flex-row gap-4 lg:gap-5 transition-colors duration-300">
+          
+          {/* ========================================================= */}
+          {/* BEGIN: LeftSidebar (FULL HEIGHT, ULTRA-RESPONSIVE)        */}
+          {/* ========================================================= */}
+          <aside className="w-full md:w-16 lg:w-20 bg-white dark:bg-slate-800 rounded-2xl flex md:flex-col items-center justify-between py-4 px-3 md:py-6 shadow-sm border border-slate-200/80 dark:border-slate-700 flex-shrink-0" data-purpose="icon-sidebar">
+            
+            {/* Top Brand Mark */}
+            <div className="flex md:flex-col items-center gap-5 lg:gap-6">
+              <button 
+                onClick={() => { setCurrentView("dashboard"); setSelectedRegion("all"); }}
+                className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-500 flex items-center justify-center hover:scale-105 transition-transform" 
+                title="Storm & Disaster Early-Warning Board"
+              >
+                <i className="w-6 h-6 stroke-[2.2]" data-lucide="cloud-sun"></i>
+              </button>
+              
+              {/* Navigation Menu Icons */}
+              <nav className="flex md:flex-col items-center gap-2.5 lg:gap-3" data-purpose="sidebar-nav">
+                {/* 1. Dashboard */}
+                <button 
+                  onClick={() => setCurrentView("dashboard")}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentView === "dashboard"
+                      ? "bg-blue-500 text-white shadow-md shadow-blue-500/25 brightness-105"
+                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                  }`} 
+                  title="Dashboard"
+                >
+                  <i className="w-5 h-5" data-lucide="layout-grid"></i>
+                </button>
+
+                {/* 2. Analytics */}
+                <button 
+                  onClick={() => setCurrentView("analytics")}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentView === "analytics"
+                      ? "bg-blue-500 text-white shadow-md shadow-blue-500/25"
+                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                  }`} 
+                  title="Command Center Analytics"
+                >
+                  <i className="w-5 h-5" data-lucide="bar-chart-2"></i>
+                </button>
+
+                {/* 3. Locations / Interactive Map */}
+                <button 
+                  onClick={() => setCurrentView("map")}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentView === "map"
+                      ? "bg-blue-500 text-white shadow-md shadow-blue-500/25"
+                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                  }`} 
+                  title="Regional Early-Warning Radar Map"
+                >
+                  <i className="w-5 h-5" data-lucide="map-pin"></i>
+                </button>
+
+                {/* 4. Live Feed List */}
+                <button 
+                  onClick={() => setCurrentView("liveFeed")}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative ${
+                    currentView === "liveFeed"
+                      ? "bg-blue-500 text-white shadow-md shadow-blue-500/25"
+                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                  }`} 
+                  title="Live Disaster Alerts Feed"
+                >
+                  <i className="w-5 h-5" data-lucide="list"></i>
+                  {alerts.some(a => !a.isAcknowledged) && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-1.5 right-1.5 animate-pulse"></span>
+                  )}
+                </button>
+
+                {/* 5. Resource Status Panel */}
+                <button 
+                  onClick={() => setCurrentView("resources")}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentView === "resources"
+                      ? "bg-blue-500 text-white shadow-md shadow-blue-500/25"
+                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                  }`} 
+                  title="Rescue Teams & Resource Panel (Ananya Kushwah)"
+                >
+                  <i className="w-5 h-5" data-lucide="shield"></i>
+                </button>
+
+                {/* 6. Academic Project Information Modal */}
+                <button 
+                  onClick={() => setShowProjectModal(true)}
+                  className="w-10 h-10 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-center transition-colors" 
+                  title="Project & Team Documentation"
+                >
+                  <i className="w-5 h-5" data-lucide="settings"></i>
+                </button>
+              </nav>
+            </div>
+
+            {/* Bottom Actions: Audio & Reset Simulation */}
+            <div className="mt-auto flex md:flex-col items-center gap-2.5">
+              <button 
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                  soundEnabled ? "text-blue-500 bg-blue-50 dark:bg-blue-900/30" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                }`}
+                title={soundEnabled ? "Alert Sound: On" : "Alert Sound: Muted"}
+              >
+                <i className="w-4 h-4" data-lucide={soundEnabled ? "volume-2" : "volume-x"}></i>
+              </button>
+
+              <button 
+                onClick={() => {
+                  setAlerts(INITIAL_ALERTS);
+                  setBannerDismissed(false);
+                  setActiveHeroTemp(27);
+                  setActiveHeroCondition("Sunny Cloudy");
+                  setSelectedRegion("all");
+                }}
+                className="w-10 h-10 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors" 
+                title="Reset Live Feed Simulation"
+              >
+                <i className="w-5 h-5" data-lucide="log-out"></i>
+              </button>
+            </div>
+          </aside>
+          {/* END: LeftSidebar */}
+
+
+          {/* ========================================================= */}
+          {/* BEGIN: MainContentArea (FILLS REMAINING SCREEN SPACE)     */}
+          {/* ========================================================= */}
+          <main className="flex-1 flex flex-col gap-4 overflow-x-hidden">
+            
+            {/* BEGIN: TopBar */}
+            <header className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4" data-purpose="topbar-header">
+              
+              {/* Left Title and Subtitle */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Weather Tracker</h1>
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                    EARLY-WARNING LIVE
+                  </span>
+                </div>
+                <p className="text-xs md:text-sm text-slate-400 font-medium flex items-center gap-2">
+                  <span>Saturday, 1 June 2024</span>
+                  <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+                  <span className="text-blue-500 font-semibold">{formatTime()}</span>
+                  {isSimulating && (
+                    <span className="hidden md:inline text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                      • Feed Sync Active
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Center Search Capsule */}
+              <div className="flex-1 max-w-xl mx-0 lg:mx-4">
+                <div className="relative w-full">
+                  <i className="w-4 h-4 text-blue-400 absolute left-4 top-1/2 -translate-y-1/2" data-lucide="search"></i>
+                  <input 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-[#dfe8f3] dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 pl-10 pr-4 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:bg-white dark:focus:bg-slate-750 transition-all shadow-inner" 
+                    placeholder="Search alerts, region, storms, rescue teams..." 
+                    type="text"
+                  />
+                  {searchQuery && (
+                    <button 
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Quick Action Bar */}
+              <div className="flex items-center gap-3 self-end lg:self-center">
+                
+                {/* Day / Night Toggle Pill */}
+                <div className="flex items-center bg-white dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <button 
+                    onClick={() => setIsDarkMode(false)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                      !isDarkMode ? "bg-blue-500 text-white shadow-xs" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    }`}
+                    title="Light Mode"
+                  >
+                    <i className="w-4 h-4" data-lucide="sun"></i>
+                  </button>
+                  <button 
+                    onClick={() => setIsDarkMode(true)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                      isDarkMode ? "bg-blue-500 text-white shadow-xs" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    }`}
+                    title="Command Center Dark Mode"
+                  >
+                    <i className="w-4 h-4" data-lucide="moon"></i>
+                  </button>
+                </div>
+
+                {/* Mail Notification / Academic Info trigger */}
+                <button 
+                  onClick={() => setShowProjectModal(true)}
+                  className="w-9 h-9 rounded-full bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-blue-600 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-sm hover:shadow transition-all relative"
+                  title="Team Info & Mentor Guide"
+                >
+                  <i className="w-4 h-4" data-lucide="mail"></i>
+                  <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-2 right-2 border-2 border-white dark:border-slate-800"></span>
+                </button>
+
+                {/* Bell Alert with unread indicator & dropdown toggle */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowNotificationTray(!showNotificationTray)}
+                    className="w-9 h-9 rounded-full bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-blue-600 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-sm hover:shadow relative transition-all"
+                    title="Live Disaster Alerts Tray"
+                  >
+                    <i className="w-4 h-4" data-lucide="bell"></i>
+                    {alerts.filter(a => !a.isAcknowledged).length > 0 && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 absolute top-1.5 right-1.5 border-2 border-white dark:border-slate-800 animate-pulse"></span>
+                    )}
+                  </button>
+
+                  {/* Dropdown Notification Tray */}
+                  {showNotificationTray && (
+                    <div className="absolute right-0 top-12 w-80 sm:w-96 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-4 z-50">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700 mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Live Alert Stream</span>
+                          <span className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950 text-red-600 text-[10px] font-bold">
+                            {alerts.filter(a => !a.isAcknowledged).length} Active
+                          </span>
+                        </div>
+                        <button 
+                          onClick={() => setAlerts(prev => prev.map(a => ({ ...a, isAcknowledged: true })))}
+                          className="text-[11px] text-blue-500 font-semibold hover:underline"
+                        >
+                          Mark all read
+                        </button>
+                      </div>
+
+                      <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                        {alerts.slice(0, 5).map(alert => (
+                          <div 
+                            key={alert.id}
+                            className={`p-2.5 rounded-xl border text-xs transition-all ${
+                              alert.severity === 'critical'
+                                ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-900/50'
+                                : alert.severity === 'high'
+                                ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50'
+                                : 'bg-slate-50 dark:bg-slate-750 border-slate-200/60 dark:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-bold text-slate-800 dark:text-slate-200">{alert.title}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                alert.severity === 'critical' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'
+                              }`}>
+                                {alert.severity}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{alert.description}</p>
+                            <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-200/50 dark:border-slate-700/50 text-[10px] text-slate-400">
+                              <span>{alert.region}</span>
+                              {!alert.isAcknowledged ? (
+                                <button 
+                                  onClick={() => handleAcknowledge(alert.id)}
+                                  className="text-blue-500 hover:text-blue-700 font-semibold"
+                                >
+                                  Acknowledge
+                                </button>
+                              ) : (
+                                <span className="text-emerald-500 font-medium">✓ Acknowledged</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between">
+                        <button 
+                          onClick={() => { setCurrentView("liveFeed"); setShowNotificationTray(false); }}
+                          className="text-xs font-semibold text-blue-500 hover:underline"
+                        >
+                          View Full Event Log →
+                        </button>
+                        <button 
+                          onClick={() => triggerManualAlert('critical')}
+                          className="text-xs font-semibold text-rose-500 hover:underline"
+                        >
+                          + Simulate Event
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* User Profile Chip (Opens Team & Project Modal) */}
+                <div 
+                  onClick={() => setShowProjectModal(true)}
+                  className="flex items-center gap-2 bg-white dark:bg-slate-800 pl-1.5 pr-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors"
+                  title="Click to view Project & Team Members"
+                >
+                  <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center overflow-hidden border border-amber-300">
+                    <span className="text-xs font-bold text-amber-700">AR</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 leading-tight">Anand Rawat</span>
+                  </div>
+                  <i className="w-3.5 h-3.5 text-slate-400" data-lucide="chevron-down"></i>
+                </div>
+              </div>
+            </header>
+            {/* END: TopBar */}
+
+
+            {/* ========================================================= */}
+            {/* COLOR-CODED SEVERITY TIERED BANNER (Ananya Kushwah Role) */}
+            {/* ========================================================= */}
+            {!bannerDismissed && topCriticalAlert && (
+              <div className={`w-full rounded-2xl p-3 sm:p-3.5 border shadow-sm transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                topCriticalAlert.severity === 'critical'
+                  ? 'bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 dark:from-red-950/60 dark:to-slate-900 border-red-300 dark:border-red-900/60'
+                  : 'bg-gradient-to-r from-amber-50 via-yellow-50 to-blue-50 dark:from-amber-950/40 dark:to-slate-900 border-amber-300 dark:border-amber-900/60'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    topCriticalAlert.severity === 'critical'
+                      ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/30'
+                      : 'bg-amber-500 text-white'
+                  }`}>
+                    <i className="w-5 h-5" data-lucide={topCriticalAlert.icon || "alert-triangle"}></i>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-red-600 text-white">
+                        {topCriticalAlert.severity} ALERT
+                      </span>
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                        {topCriticalAlert.title} — {topCriticalAlert.region}
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                        ({topCriticalAlert.windSpeed} | Rain: {topCriticalAlert.rainfall} | Pressure: {topCriticalAlert.pressure})
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 line-clamp-1">
+                      {topCriticalAlert.description} <span className="font-semibold text-rose-600 dark:text-rose-400">Action: {topCriticalAlert.advisory}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
+                  <button 
+                    onClick={() => { setSelectedRegion(topCriticalAlert.regionKey); setCurrentView("map"); }}
+                    className="px-3 py-1 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs"
+                  >
+                    View on Map
+                  </button>
+                  <button 
+                    onClick={() => setCurrentView("resources")}
+                    className="px-3 py-1 rounded-full text-xs font-bold bg-blue-500 text-white hover:bg-blue-600 shadow-xs shadow-blue-500/30"
+                  >
+                    Mobilize Teams
+                  </button>
+                  <button 
+                    onClick={() => setBannerDismissed(true)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                    title="Dismiss Banner"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+
+
+            {/* ========================================================= */}
+            {/* VIEW SWITCHER: DASHBOARD (FULL PAGE, FULLY FUNCTIONAL)    */}
+            {/* ========================================================= */}
+            {currentView === "dashboard" && (
+              <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                
+                {/* ================= LEFT & MIDDLE COLUMN (SPAN 8) ================= */}
+                <div className="lg:col-span-8 flex flex-col gap-5">
+                  
+                  {/* ROW 1: Hero Today Card & Interactive Temperature Trend */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    
+                    {/* Hero Today Card (5 cols) */}
+                    <section className="md:col-span-5 dashboard-card p-5 flex flex-col justify-between" data-purpose="current-weather-hero">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                            {selectedDay === "Sat" ? "Saturday" : forecastDays.find(d => d.day === selectedDay)?.date || selectedDay}
+                          </h2>
+                          <p className="text-xs text-slate-400 font-medium">1 June 2024</p>
+                        </div>
+                        {/* Location Badge */}
+                        <span 
+                          onClick={() => setSelectedRegion(selectedRegion === "all" ? "north" : "all")}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500 text-white text-xs font-semibold shadow-sm shadow-blue-500/30 cursor-pointer hover:brightness-105"
+                          title="Click to toggle regional focus"
+                        >
+                          <i className="w-3 h-3" data-lucide="map-pin"></i>
+                          {selectedRegion === "all" ? "Australia" : REGIONS_DATA.find(r => r.id === selectedRegion)?.name}
+                        </span>
+                      </div>
+
+                      {/* Weather Illustration and Temp */}
+                      <div className="my-4 flex items-center justify-between">
+                        {/* Weather Graphic (3D Soft Sun & Cloud matching Figma) */}
+                        <div className="relative w-28 h-24 flex items-center justify-center animate-float-gentle">
+                          {/* Stylized Sun */}
+                          <div className="absolute -top-1 left-2 w-14 h-14 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 shadow-lg shadow-amber-400/40 flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-full bg-yellow-200/50 blur-[2px]"></div>
+                          </div>
+                          {/* Stylized Soft Cloud */}
+                          <div className="absolute bottom-2 left-0 w-24 h-12 bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-full shadow-md border border-white dark:border-slate-600 flex items-center justify-center">
+                            <div className="absolute -top-4 left-4 w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700"></div>
+                            <div className="absolute -top-2 left-10 w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800"></div>
+                          </div>
+                          {/* Micro cloud hint */}
+                          <div className="absolute top-1 right-1 w-8 h-4 bg-slate-200/80 dark:bg-slate-600/80 rounded-full blur-[0.5px]"></div>
+                        </div>
+
+                        {/* Numerical Temp Values */}
+                        <div className="text-right">
+                          <div className="text-4xl lg:text-5xl font-extrabold text-amber-500 tracking-tight">
+                            {activeHeroTemp}°C
+                          </div>
+                          <div className="text-[11px] font-semibold text-slate-400 mt-1">High : 29° Low : 15°</div>
+                        </div>
+                      </div>
+
+                      {/* Condition description & Active Disaster Advisory */}
+                      <div className="flex items-center justify-between pt-1">
+                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{activeHeroCondition}</p>
+                        <span className="text-[10px] font-bold text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-800">
+                          Threat Level: Critical
+                        </span>
+                      </div>
+                    </section>
+
+                    {/* Interactive Functional Temperature Trend Card (7 cols) */}
+                    <section className="md:col-span-7 dashboard-card p-5 flex flex-col justify-between" data-purpose="temperature-trend-graph">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Temperature Trend</h3>
+                          <p className="text-[10px] text-slate-400">Interactive Telemetry & Barometric Curve</p>
+                        </div>
+                        
+                        {/* Functional Metric Switcher Tabs */}
+                        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
+                          {["Hourly", "Weekly", "Pressure", "Wind"].map(mode => (
+                            <button
+                              key={mode}
+                              onClick={() => {
+                                setChartMetric(mode);
+                                setHoveredTrendPoint(CHART_DATASETS[mode].points[3]);
+                              }}
+                              className={`px-2 py-0.5 rounded-md transition-all ${
+                                chartMetric === mode 
+                                  ? "bg-white dark:bg-slate-700 text-blue-500 shadow-xs" 
+                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Interactive SVG Chart with real mouse tracking */}
+                      <div className="relative w-full h-44 mt-2">
+                        {/* Tooltip Tag dynamically placed along hovered point */}
+                        <div 
+                          className="absolute -top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10 transition-all duration-150"
+                          style={{ left: `${(hoveredTrendPoint.x / 460) * 100}%` }}
+                        >
+                          <span 
+                            className="px-2.5 py-0.5 rounded-md text-white text-[11px] font-bold shadow-md transition-colors"
+                            style={{ backgroundColor: activeChartData.color }}
+                          >
+                            {hoveredTrendPoint.val}{hoveredTrendPoint.unit}
+                          </span>
+                          <div 
+                            className="w-1.5 h-1.5 rotate-45 -mt-1"
+                            style={{ backgroundColor: activeChartData.color }}
+                          ></div>
+                          <div 
+                            className="w-2.5 h-2.5 rounded-full bg-white dark:bg-slate-900 border-2 mt-1"
+                            style={{ borderColor: activeChartData.color }}
+                          ></div>
+                          {/* Vertical guideline down to axis */}
+                          <div 
+                            className="w-[1px] h-24 border-dashed border-l mt-0.5 opacity-60"
+                            style={{ borderColor: activeChartData.color }}
+                          ></div>
+                        </div>
+
+                        {/* SVG Curve + Grid with dynamic smooth rendering */}
+                        <svg 
+                          className="w-full h-32 overflow-visible" 
+                          viewBox="0 0 460 140"
+                          onMouseMove={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const relX = ((e.clientX - rect.left) / rect.width) * 460;
+                            let closest = activeChartData.points[0];
+                            let minDist = Math.abs(relX - closest.x);
+                            for (let pt of activeChartData.points) {
+                              const dist = Math.abs(relX - pt.x);
+                              if (dist < minDist) {
+                                minDist = dist;
+                                closest = pt;
+                              }
+                            }
+                            setHoveredTrendPoint(closest);
+                          }}
+                        >
+                          <defs>
+                            <linearGradient id="dynamicWaveGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+                              <stop offset="0%" stopColor={activeChartData.color} stopOpacity="0.3"></stop>
+                              <stop offset="100%" stopColor={activeChartData.color} stopOpacity="0.0"></stop>
+                            </linearGradient>
+                          </defs>
+
+                          {/* Horizontal Subtle Gridlines */}
+                          <line stroke="#f1f5f9" className="dark:stroke-slate-700/60" strokeDasharray="3,3" strokeWidth="1.2" x1="30" x2="450" y1="20" y2="20"></line>
+                          <line stroke="#f1f5f9" className="dark:stroke-slate-700/60" strokeDasharray="3,3" strokeWidth="1.2" x1="30" x2="450" y1="45" y2="45"></line>
+                          <line stroke="#f1f5f9" className="dark:stroke-slate-700/60" strokeDasharray="3,3" strokeWidth="1.2" x1="30" x2="450" y1="70" y2="70"></line>
+                          <line stroke="#f1f5f9" className="dark:stroke-slate-700/60" strokeDasharray="3,3" strokeWidth="1.2" x1="30" x2="450" y1="95" y2="95"></line>
+                          <line stroke="#f1f5f9" className="dark:stroke-slate-700/60" strokeDasharray="3,3" strokeWidth="1.2" x1="30" x2="450" y1="120" y2="120"></line>
+
+                          {/* Y-Axis Labels */}
+                          {activeChartData.yLabels.map((lbl, idx) => (
+                            <text 
+                              key={idx}
+                              fill="#94a3b8" 
+                              fontFamily="Plus Jakarta Sans" 
+                              fontSize="9" 
+                              x="12" 
+                              y={24 + (idx * 25)}
+                            >
+                              {lbl}
+                            </text>
+                          ))}
+
+                          {/* Gradient Under Path */}
+                          <path 
+                            d={activeChartData.gradientPath} 
+                            fill="url(#dynamicWaveGradient)"
+                            className="transition-all duration-300"
+                          ></path>
+
+                          {/* Main Curving Trend Line */}
+                          <path 
+                            d={activeChartData.path} 
+                            fill="none" 
+                            stroke={activeChartData.color} 
+                            strokeLinecap="round" 
+                            strokeWidth="2.4"
+                            className="transition-all duration-300"
+                          ></path>
+
+                          {/* Interactive Point Nodes */}
+                          {activeChartData.points.map((pt, idx) => (
+                            <circle
+                              key={idx}
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={hoveredTrendPoint.time === pt.time ? "5" : "3"}
+                              fill={hoveredTrendPoint.time === pt.time ? activeChartData.color : "#ffffff"}
+                              stroke={activeChartData.color}
+                              strokeWidth="2"
+                              className="cursor-pointer transition-all duration-150"
+                              onMouseEnter={() => setHoveredTrendPoint(pt)}
+                            />
+                          ))}
+                        </svg>
+
+                        {/* X-Axis Timestamps */}
+                        <div className="flex justify-between pl-7 pr-1 text-[10px] font-semibold text-slate-400 mt-2">
+                          {activeChartData.points.map(pt => (
+                            <span 
+                              key={pt.time}
+                              onMouseEnter={() => setHoveredTrendPoint(pt)}
+                              className={`cursor-pointer px-1 rounded transition-colors ${
+                                hoveredTrendPoint.time === pt.time ? "text-blue-500 font-bold" : "hover:text-slate-600 dark:hover:text-slate-200"
+                              }`}
+                            >
+                              {pt.time}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* ROW 2: Forecast Summary & Functional Solar Schedule */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    
+                    {/* 7-Day Forecast Summary (8 cols) */}
+                    <section className="md:col-span-8 dashboard-card p-5" data-purpose="forecast-summary">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Forecast Summary</h3>
+                        <span className="text-[11px] font-medium text-slate-400">Click day to update dashboard</span>
+                      </div>
+
+                      {/* 7 Day Pill Columns matching Figma */}
+                      <div className="grid grid-cols-7 gap-2 text-center">
+                        {forecastDays.map(f => {
+                          const isSelected = selectedDay === f.day;
+                          return (
+                            <div 
+                              key={f.day}
+                              onClick={() => handleSelectDay(f)}
+                              className={`flex flex-col items-center justify-between py-2.5 px-1 rounded-xl cursor-pointer transition-all transform ${
+                                isSelected
+                                  ? "bg-blue-500 text-white shadow-md shadow-blue-500/30 scale-105"
+                                  : "bg-slate-50/60 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80"
+                              }`}
+                            >
+                              <span className={`text-[11px] font-semibold ${isSelected ? "text-white font-bold" : "text-slate-500 dark:text-slate-400"}`}>
+                                {f.day}
+                              </span>
+                              <i 
+                                className={`w-5 h-5 my-2 ${
+                                  isSelected ? "text-yellow-200" :
+                                  f.icon === "sun" ? "text-amber-400" :
+                                  f.icon === "cloud-rain" ? "text-blue-400" :
+                                  f.icon === "cloud-lightning" ? "text-amber-500" :
+                                  f.icon === "cloud" ? "text-slate-400" : "text-amber-400"
+                                }`} 
+                                data-lucide={f.icon}
+                              ></i>
+                              <span className={`text-xs ${isSelected ? "font-extrabold text-white" : "font-bold text-slate-700 dark:text-slate-200"}`}>
+                                {f.temp}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    {/* Today Sunrise & Sunset with Solar Progress Tracker (4 cols) */}
+                    <section className="md:col-span-4 dashboard-card p-5 flex flex-col justify-between gap-3" data-purpose="solar-times">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Today</h3>
+                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                          <i className="w-3 h-3" data-lucide="sun"></i>
+                          10h 35m Solar Window
+                        </span>
+                      </div>
+                      
+                      {/* Sunrise Widget */}
+                      <div className="flex items-center gap-3 bg-slate-50/70 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/80">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-amber-500 via-orange-400 to-indigo-600 flex items-center justify-center text-white shadow-inner flex-shrink-0">
+                          <i className="w-5 h-5" data-lucide="sunrise"></i>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-slate-400">Sunrise</p>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">6.40 <span className="text-[11px] font-semibold text-blue-500">AM</span></p>
+                        </div>
+                      </div>
+
+                      {/* Sunset Widget */}
+                      <div className="flex items-center gap-3 bg-slate-50/70 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/80">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-orange-500 via-rose-500 to-purple-800 flex items-center justify-center text-white shadow-inner flex-shrink-0">
+                          <i className="w-5 h-5" data-lucide="sunset"></i>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-slate-400">Sunset</p>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">5.15 <span className="text-[11px] font-semibold text-blue-500">PM</span></p>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* ROW 3: Functional Precipitation Chart & Weather Alerts Panel */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    
+                    {/* Functional Precipitation Levels Bar Chart (7 cols) */}
+                    <section className="md:col-span-7 dashboard-card p-5" data-purpose="precipitation-levels">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Precipitation Levels</h3>
+                          <span className="text-[10px] text-blue-500 font-semibold">Hover bars for detailed storm metrics</span>
+                        </div>
+                        
+                        {/* Metric Selector Pills */}
+                        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[9px] font-bold">
+                          {[
+                            { key: "rain", label: "Rain (mm)" },
+                            { key: "prob", label: "Prob (%)" },
+                            { key: "runoff", label: "Runoff" }
+                          ].map(m => (
+                            <button
+                              key={m.key}
+                              onClick={() => setPrecipitationMetric(m.key)}
+                              className={`px-2 py-0.5 rounded-md transition-all ${
+                                precipitationMetric === m.key
+                                  ? "bg-white dark:bg-slate-700 text-blue-500 shadow-xs"
+                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                              }`}
+                            >
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-end gap-3 h-40 pt-2">
+                        {/* Y-Scale */}
+                        <div className="flex flex-col justify-between h-32 text-[10px] font-semibold text-slate-400 pb-5">
+                          <span>100</span>
+                          <span>80</span>
+                          <span>60</span>
+                          <span>40</span>
+                          <span>20</span>
+                          <span>0</span>
+                        </div>
+
+                        {/* Interactive Capsule Bars Container */}
+                        <div className="flex-1 grid grid-cols-7 gap-3 items-end h-full">
+                          {precipitationBars.map(bar => {
+                            const isSelected = selectedDay === bar.day;
+                            return (
+                              <div 
+                                key={bar.day} 
+                                onClick={() => setSelectedDay(bar.day)}
+                                className="flex flex-col items-center h-full justify-end group cursor-pointer relative"
+                              >
+                                {/* Tooltip on Hover */}
+                                <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-md">
+                                  {bar.day}: {bar.label} ({bar.sub})
+                                </div>
+
+                                <div className={`w-4 sm:w-5 rounded-full h-32 flex flex-col justify-end overflow-hidden p-0.5 transition-all ${
+                                  isSelected ? "bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-400" : "bg-slate-100 dark:bg-slate-700"
+                                }`}>
+                                  <div 
+                                    className={`w-full rounded-full transition-all duration-500 ${
+                                      bar.percent >= 80 ? 'bg-blue-500 group-hover:bg-rose-500' : 'bg-blue-500 group-hover:bg-blue-600'
+                                    }`} 
+                                    style={{ height: `${bar.percent}%` }}
+                                  ></div>
+                                </div>
+                                <span className={`text-[10px] mt-2 transition-colors ${
+                                  isSelected ? "font-bold text-blue-500" : "font-semibold text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200"
+                                }`}>
+                                  {bar.day}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Interactive Weather Alerts Panel (5 cols) */}
+                    <section className="md:col-span-5 dashboard-card p-5 flex flex-col justify-between" data-purpose="weather-alerts">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Weather Alerts</h3>
+                        <button 
+                          onClick={() => triggerManualAlert('critical')}
+                          className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 flex items-center gap-1"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                          Simulate Alert
+                        </button>
+                      </div>
+
+                      {/* Alerts list showing top 2 live alerts */}
+                      <div className="space-y-2">
+                        {filteredAlerts.slice(0, 2).map((alert, idx) => (
+                          <div 
+                            key={alert.id}
+                            onClick={() => setInspectingAlert(alert)}
+                            className={`flex items-center justify-between py-2 cursor-pointer rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 p-1.5 transition-colors ${
+                              idx === 0 ? 'border-b border-slate-100 dark:border-slate-700/60' : ''
+                            }`}
+                          >
+                            <div>
+                              <span className="text-[11px] font-semibold text-slate-400">
+                                {alert.timestamp}
+                              </span>
+                              <div className="flex items-baseline gap-2 mt-0.5">
+                                <span className="text-lg font-bold text-slate-800 dark:text-slate-100">{alert.temp}</span>
+                                <span className="text-[10px] text-slate-400">H: {alert.high} | L: {alert.low}</span>
+                              </div>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-300">
+                              <i className="w-5 h-5" data-lucide={alert.icon}></i>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Control center mini ticker */}
+                      <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">
+                          {alerts.length} Total Alerts in Buffer
+                        </span>
+                        <button 
+                          onClick={() => setCurrentView("liveFeed")}
+                          className="text-blue-500 font-bold hover:underline"
+                        >
+                          View Feed ({alerts.filter(a => !a.isAcknowledged).length} unread) →
+                        </button>
+                      </div>
+                    </section>
+
+                  </div>
+
+                </div>
+
+                {/* ================= RIGHT COLUMN (SPAN 4): FUNCTIONAL REGIONAL RADAR MAP ================= */}
+                <div className="lg:col-span-4 flex flex-col gap-5">
+                  
+                  <section className="dashboard-card p-5 flex flex-col" data-purpose="regional-weather-map">
+                    {/* Card Header with functional map layers */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Temperature in various regions</h3>
+                        <p className="text-[10px] text-slate-400">Click pins to filter telemetry</p>
+                      </div>
+                      
+                      {/* Map layer pills */}
+                      <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[9px] font-bold">
+                        {["temp", "radar", "clouds"].map(layer => (
+                          <button
+                            key={layer}
+                            onClick={() => setMapLayer(layer)}
+                            className={`px-2 py-0.5 rounded-md uppercase transition-all ${
+                              mapLayer === layer 
+                                ? "bg-white dark:bg-slate-700 text-blue-500 shadow-xs" 
+                                : "text-slate-400 hover:text-slate-600"
+                            }`}
+                          >
+                            {layer}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* SVG Map of Australia with Active Radar storm overlay */}
+                    <div className="relative w-full h-64 bg-slate-50/50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center p-3 border border-slate-100/60 dark:border-slate-700/60 overflow-hidden">
+                      
+                      {/* Radar sweep beam animation when radar layer is on */}
+                      {mapLayer === "radar" && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-72 h-72 rounded-full border border-red-500/20"></div>
+                          <div className="w-56 h-56 rounded-full border border-blue-500/20"></div>
+                          <div className="absolute w-72 h-72 rounded-full bg-gradient-to-tr from-rose-500/15 via-transparent to-transparent animate-radar-sweep"></div>
+                        </div>
+                      )}
+
+                      {/* Stylized Australia SVG Path matching Figma */}
+                      <svg className="w-full h-full fill-slate-200/90 dark:fill-slate-700/80 stroke-white dark:stroke-slate-600 stroke-[2.5] drop-shadow-sm" viewBox="0 0 380 300">
+                        <path d="M 90,85 C 105,75 140,70 170,82 C 180,68 195,45 220,50 C 235,52 245,75 250,90 C 265,95 295,110 305,130 C 315,150 320,180 310,205 C 300,225 280,220 270,235 C 260,250 240,240 220,230 C 200,225 180,230 160,240 C 140,245 130,225 110,215 C 95,208 80,210 70,195 C 60,180 62,150 68,135 C 75,118 78,98 90,85 Z"></path>
+                        <path d="M 240,265 C 248,260 258,264 256,275 C 252,284 240,280 240,265 Z"></path>
+                      </svg>
+
+                      {/* Regional Temperature Badges pinned over geographic regions */}
+                      
+                      {/* North (Darwin/Queensland): Red 32° */}
+                      <div 
+                        onClick={() => {
+                          const next = selectedRegion === "north" ? "all" : "north";
+                          setSelectedRegion(next);
+                          setActiveHeroTemp(32);
+                          setActiveHeroCondition("Severe Heat & Squall");
+                        }}
+                        className="absolute top-10 left-[48%] -translate-x-1/2 flex items-center justify-center cursor-pointer group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-rose-500/25 radar-ring"></div>
+                        <div className="w-6 h-6 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-lg shadow-rose-500/40 border-2 border-white ring-2 ring-rose-400/20 group-hover:scale-125 transition-transform z-10">
+                          32°
+                        </div>
+                      </div>
+
+                      {/* West (Perth): Green 19° */}
+                      <div 
+                        onClick={() => {
+                          const next = selectedRegion === "west" ? "all" : "west";
+                          setSelectedRegion(next);
+                          setActiveHeroTemp(19);
+                          setActiveHeroCondition("Rain & Gale Winds");
+                        }}
+                        className="absolute top-[48%] left-[28%] -translate-x-1/2 flex items-center justify-center cursor-pointer group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/25 radar-ring"></div>
+                        <div className="w-6 h-6 rounded-full bg-emerald-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-lg shadow-emerald-500/40 border-2 border-white ring-2 ring-emerald-400/20 group-hover:scale-125 transition-transform z-10">
+                          19°
+                        </div>
+                      </div>
+
+                      {/* East (Sydney/Brisbane): Amber 27° */}
+                      <div 
+                        onClick={() => {
+                          const next = selectedRegion === "east" ? "all" : "east";
+                          setSelectedRegion(next);
+                          setActiveHeroTemp(27);
+                          setActiveHeroCondition("Destructive Winds");
+                        }}
+                        className="absolute top-[42%] right-[22%] flex items-center justify-center cursor-pointer group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-amber-500/25 radar-ring"></div>
+                        <div className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-lg shadow-amber-500/40 border-2 border-white ring-2 ring-amber-400/20 group-hover:scale-125 transition-transform z-10">
+                          27°
+                        </div>
+                      </div>
+
+                      {/* South (Melbourne/Adelaide): Blue 15° */}
+                      <div 
+                        onClick={() => {
+                          const next = selectedRegion === "south" ? "all" : "south";
+                          setSelectedRegion(next);
+                          setActiveHeroTemp(15);
+                          setActiveHeroCondition("Cold Drizzle & Hail Risk");
+                        }}
+                        className="absolute bottom-10 left-[56%] flex items-center justify-center cursor-pointer group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-blue-500/25 radar-ring"></div>
+                        <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-lg shadow-blue-500/40 border-2 border-white ring-2 ring-blue-400/20 group-hover:scale-125 transition-transform z-10">
+                          15°
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Locations Table Breakdown matching Figma */}
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 pb-2 border-b border-slate-100 dark:border-slate-700">
+                        <span>Locations</span>
+                        <span>Temperature</span>
+                      </div>
+
+                      <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                        {REGIONS_DATA.map(region => {
+                          const isHighlighted = selectedRegion === region.id;
+                          return (
+                            <div 
+                              key={region.id}
+                              onClick={() => {
+                                const next = selectedRegion === region.id ? "all" : region.id;
+                                setSelectedRegion(next);
+                                setActiveHeroTemp(region.numericTemp);
+                                setActiveHeroCondition(region.threat === "Critical" ? "Severe Alert Zone" : "Monitored Conditions");
+                              }}
+                              className={`flex items-center justify-between py-3 px-1 rounded-lg transition-colors cursor-pointer ${
+                                isHighlighted ? "bg-blue-50 dark:bg-blue-950/60" : "hover:bg-slate-50/70 dark:hover:bg-slate-800/60"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{region.name}</span>
+                                {isHighlighted && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 bg-blue-500 text-white rounded">
+                                    ACTIVE
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <i className={`w-4 h-4 ${region.iconColor}`} data-lucide={region.icon}></i>
+                                <span className={`text-xs font-bold ${region.textColor}`}>{region.temp}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Quick Resource Summary Strip inside right column */}
+                      <div className="mt-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 flex items-center justify-between">
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">Rescue Readiness</p>
+                          <p className="text-[10px] text-slate-400">
+                            {rescueTeams.filter(t => t.status === "Deployed").length} Deployed • {rescueTeams.filter(t => t.status === "Standby").length} Standby
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => setCurrentView("resources")}
+                          className="px-2.5 py-1 rounded-lg bg-blue-500 text-white text-[11px] font-bold hover:brightness-105"
+                        >
+                          Panel →
+                        </button>
+                      </div>
+
+                    </div>
+                  </section>
+
+                </div>
+
+              </div>
+            )}
+
+
+            {/* ========================================================= */}
+            {/* VIEW 2: FULL LIVE FEED LIST (Command Center Stream)       */}
+            {/* ========================================================= */}
+            {currentView === "liveFeed" && (
+              <div className="dashboard-card p-6 flex flex-col gap-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Live Disaster & Weather Event Feed</h2>
+                    <p className="text-xs text-slate-400">Real-time alerts generated client-side via JavaScript timers without backend</p>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button 
+                      onClick={() => triggerManualAlert('critical')}
+                      className="px-3 py-1.5 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-600 shadow-sm shadow-rose-500/25 flex items-center gap-1.5"
+                    >
+                      <i className="w-3.5 h-3.5" data-lucide="plus-circle"></i>
+                      Simulate Critical Event
+                    </button>
+                    <button 
+                      onClick={() => setIsSimulating(!isSimulating)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                        isSimulating ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                      }`}
+                    >
+                      {isSimulating ? "⏸ Pause Stream" : "▶ Resume Stream"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Severity Filter Tabs */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                  {['all', 'critical', 'high', 'moderate', 'low'].map(sev => (
+                    <button
+                      key={sev}
+                      onClick={() => setSearchQuery(sev === 'all' ? '' : sev)}
+                      className={`px-3 py-1 rounded-full font-bold uppercase transition-all ${
+                        (sev === 'all' && searchQuery === '') || searchQuery.toLowerCase() === sev
+                          ? 'bg-blue-500 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-750 text-slate-500 hover:bg-slate-200'
+                      }`}
+                    >
+                      {sev} ({sev === 'all' ? alerts.length : alerts.filter(a => a.severity === sev).length})
+                    </button>
+                  ))}
+                </div>
+
+                {/* Event Table / Cards */}
+                <div className="space-y-3">
+                  {filteredAlerts.map(alert => (
+                    <div 
+                      key={alert.id}
+                      className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                        alert.severity === 'critical'
+                          ? 'bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-900/60'
+                          : alert.severity === 'high'
+                          ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60'
+                          : 'bg-slate-50/50 dark:bg-slate-800/50 border-slate-200/60 dark:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white ${
+                          alert.severity === 'critical' ? 'bg-rose-500' : alert.severity === 'high' ? 'bg-amber-500' : 'bg-blue-500'
+                        }`}>
+                          <i className="w-5 h-5" data-lucide={alert.icon}></i>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800 dark:text-slate-100 text-sm">{alert.title}</span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                              alert.severity === 'critical' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'
+                            }`}>
+                              {alert.severity}
+                            </span>
+                            <span className="text-xs text-slate-400 font-medium">[{alert.id}] • {alert.fullTime}</span>
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">{alert.description}</p>
+                          <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
+                            <span>📍 <strong>Region:</strong> {alert.region}</span>
+                            <span>💨 <strong>Wind:</strong> {alert.windSpeed}</span>
+                            <span>🌧️ <strong>Rainfall:</strong> {alert.rainfall}</span>
+                            <span>🌡️ <strong>Temp:</strong> {alert.temp}</span>
+                            <span>🧭 <strong>Pressure:</strong> {alert.pressure}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
+                        {!alert.isAcknowledged ? (
+                          <button 
+                            onClick={() => handleAcknowledge(alert.id)}
+                            className="px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 shadow-xs"
+                          >
+                            Acknowledge Alert
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+                            ✓ Verified & Acknowledged
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+
+            {/* ========================================================= */}
+            {/* VIEW 3: RESOURCE PANEL (Ananya Kushwah Specific Role)     */}
+            {/* ========================================================= */}
+            {currentView === "resources" && (
+              <div className="dashboard-card p-6 flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Disaster Resource & Response Management Panel</h2>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                        Lead: Ananya Kushwah (2415000208)
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">Live monitoring and allocation of rescue units, evacuation shelters, and relief supplies</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-200">
+                      Emergency Readiness: 94.2%
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3 Metric Summary Blocks */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/60 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">Rescue Teams</p>
+                      <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1">
+                        {rescueTeams.filter(t => t.status === "Deployed").length} / {rescueTeams.length} Deployed
+                      </h3>
+                      <p className="text-[11px] text-slate-500">{rescueTeams.filter(t => t.status === "Standby").length} units on standby</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500 text-white flex items-center justify-center">
+                      <i className="w-6 h-6" data-lucide="shield"></i>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200/60 dark:border-purple-900/60 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-purple-600 dark:text-purple-400">Active Shelters Capacity</p>
+                      <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1">
+                        {shelters.reduce((acc, s) => acc + s.occupied, 0)} / {shelters.reduce((acc, s) => acc + s.capacity, 0)}
+                      </h3>
+                      <p className="text-[11px] text-slate-500">4 Shelters active across 4 sectors</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-purple-500 text-white flex items-center justify-center">
+                      <i className="w-6 h-6" data-lucide="home"></i>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/60 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Relief Supplies Buffer</p>
+                      <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1">82.4% Stock</h3>
+                      <p className="text-[11px] text-slate-500">41,200L Water, 14,600 MREs Ready</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center">
+                      <i className="w-6 h-6" data-lucide="package"></i>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rescue Teams Table with interactive Dispatch Toggle */}
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Rescue & Emergency Response Squads</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-400">
+                          <th className="pb-2 font-semibold">Team Unit</th>
+                          <th className="pb-2 font-semibold">Assigned Zone</th>
+                          <th className="pb-2 font-semibold">Personnel</th>
+                          <th className="pb-2 font-semibold">Specialized Equipment</th>
+                          <th className="pb-2 font-semibold">Status</th>
+                          <th className="pb-2 font-semibold text-right">Deployment Toggle</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {rescueTeams.map(team => (
+                          <tr key={team.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                            <td className="py-3 font-bold text-slate-800 dark:text-slate-100">{team.name}</td>
+                            <td className="py-3 text-slate-600 dark:text-slate-300">{team.region}</td>
+                            <td className="py-3 text-slate-600 dark:text-slate-300 font-semibold">{team.count} Responders</td>
+                            <td className="py-3 text-slate-500">{team.equip}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                team.status === 'Deployed' ? 'bg-rose-100 text-rose-600' :
+                                team.status === 'En-Route' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                              }`}>
+                                {team.status}
+                              </span>
+                            </td>
+                            <td className="py-3 text-right">
+                              <button 
+                                onClick={() => handleDeployTeam(team.id)}
+                                className={`px-2.5 py-1 rounded font-semibold text-[11px] transition-colors ${
+                                  team.status === "Deployed" 
+                                    ? "bg-rose-100 hover:bg-rose-200 text-rose-700" 
+                                    : "bg-blue-500 hover:bg-blue-600 text-white"
+                                }`}
+                              >
+                                {team.status === "Deployed" ? "Recall Unit" : "Deploy Unit"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Shelters & Supplies Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+                  {/* Shelters */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-3">Emergency Disaster Shelters</h4>
+                    <div className="space-y-3">
+                      {shelters.map(sh => (
+                        <div key={sh.id} className="bg-white dark:bg-slate-750 p-3 rounded-xl border border-slate-200/60 dark:border-slate-700 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-slate-800 dark:text-slate-100">{sh.name}</span>
+                            <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded">
+                              {sh.backup}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span>Capacity: {sh.occupied} / {sh.capacity} Persons</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{Math.round((sh.occupied / sh.capacity) * 100)}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="bg-blue-500 h-full rounded-full" 
+                              style={{ width: `${(sh.occupied / sh.capacity) * 100}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Supplies */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-3">Relief & Critical Supplies Buffer</h4>
+                    <div className="space-y-3">
+                      {supplies.map(sup => (
+                        <div key={sup.item} className="bg-white dark:bg-slate-750 p-3 rounded-xl border border-slate-200/60 dark:border-slate-700 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-slate-800 dark:text-slate-100">{sup.item}</span>
+                            <span className="text-[10px] font-bold text-blue-500">{sup.allocated.toLocaleString()} {sup.unit}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span>Stock Availability</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{sup.percent}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full ${sup.percent > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                              style={{ width: `${sup.percent}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+
+            {/* ========================================================= */}
+            {/* VIEW 4: EXPANDED RADAR MAP VIEW (Anand Rawat Specific Role) */}
+            {/* ========================================================= */}
+            {currentView === "map" && (
+              <div className="dashboard-card p-6 flex flex-col gap-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Live Continental Early-Warning Radar Map</h2>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                        Lead: Anand Rawat (2415000201)
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">Interactive geographic visualization with severity pings, wind vectors, and evacuation sectors</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {REGIONS_DATA.map(r => (
+                      <button
+                        key={r.id}
+                        onClick={() => setSelectedRegion(selectedRegion === r.id ? "all" : r.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                          selectedRegion === r.id ? `${r.badgeColor} text-white` : 'bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {r.name.split(" ")[0]} ({r.temp})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Large Radar Map Canvas */}
+                <div className="relative w-full h-96 bg-slate-50 dark:bg-slate-800/80 rounded-2xl flex items-center justify-center p-6 border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  
+                  {/* Radar grid concentric circles */}
+                  <div className="absolute w-72 h-72 rounded-full border border-blue-400/20 pointer-events-none"></div>
+                  <div className="absolute w-96 h-96 rounded-full border border-blue-400/10 pointer-events-none"></div>
+                  <div className="absolute w-[500px] h-[500px] rounded-full border border-blue-400/5 pointer-events-none"></div>
+
+                  {/* Radar sweep beam animation */}
+                  <div className="absolute w-96 h-96 rounded-full bg-gradient-to-tr from-blue-500/10 to-transparent pointer-events-none animate-radar-sweep"></div>
+
+                  {/* Stylized Australia SVG Map */}
+                  <svg className="w-full h-full fill-slate-200/90 dark:fill-slate-700 stroke-white dark:stroke-slate-600 stroke-[2] drop-shadow-md z-0" viewBox="0 0 380 300">
+                    <path d="M 90,85 C 105,75 140,70 170,82 C 180,68 195,45 220,50 C 235,52 245,75 250,90 C 265,95 295,110 305,130 C 315,150 320,180 310,205 C 300,225 280,220 270,235 C 260,250 240,240 220,230 C 200,225 180,230 160,240 C 140,245 130,225 110,215 C 95,208 80,210 70,195 C 60,180 62,150 68,135 C 75,118 78,98 90,85 Z"></path>
+                    <path d="M 240,265 C 248,260 258,264 256,275 C 252,284 240,280 240,265 Z"></path>
+                  </svg>
+
+                  {/* Regional Markers with Full Impact Tooltips */}
+                  {REGIONS_DATA.map(reg => {
+                    const isSelected = selectedRegion === reg.id || selectedRegion === "all";
+                    return (
+                      <div 
+                        key={reg.id}
+                        onClick={() => setSelectedRegion(selectedRegion === reg.id ? "all" : reg.id)}
+                        className={`${reg.pinClass} cursor-pointer group z-20`}
+                      >
+                        <div className={`w-10 h-10 rounded-full ${reg.badgeColor}/30 radar-ring`}></div>
+                        <div className={`w-8 h-8 rounded-full ${reg.badgeColor} text-white text-xs font-black flex items-center justify-center shadow-lg border-2 border-white ring-4 ${reg.ringColor} transition-transform group-hover:scale-125`}>
+                          {reg.temp}
+                        </div>
+
+                        {/* Hover / Active Info Card */}
+                        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-48 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-2.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30">
+                          <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{reg.name}</p>
+                          <p className="text-[10px] text-rose-500 font-semibold">{reg.threat} Alert Active</p>
+                          <div className="mt-1 pt-1 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500">
+                            <div>💨 Wind: {reg.wind}</div>
+                            <div>🌧️ Rain: {reg.rainfall}</div>
+                            <div>🧭 Pressure: {reg.pressure}</div>
+                            <div>🚒 {reg.rescueTeam}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Region Detail Cards Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {REGIONS_DATA.map(r => (
+                    <div 
+                      key={r.id}
+                      onClick={() => setSelectedRegion(selectedRegion === r.id ? "all" : r.id)}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                        selectedRegion === r.id 
+                          ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 shadow-sm'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-800 dark:text-slate-100">{r.name}</span>
+                        <span className={`text-xs font-bold ${r.textColor}`}>{r.temp}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Threat: <span className="font-semibold text-rose-500">{r.threat}</span></p>
+                      <p className="text-[10px] text-slate-500 mt-2 truncate">Unit: {r.rescueTeam}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+
+            {/* ========================================================= */}
+            {/* VIEW 5: COMMAND CENTER ANALYTICS VIEW                    */}
+            {/* ========================================================= */}
+            {currentView === "analytics" && (
+              <div className="dashboard-card p-6 flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Disaster Response & Alert Analytics</h2>
+                    <p className="text-xs text-slate-400">Computational telemetry, dispatch latency, and severity threat distributions</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500">Live Tick: {liveSeconds}s</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700">
+                    <p className="text-xs font-semibold text-slate-400">Mean Response Time</p>
+                    <h3 className="text-3xl font-extrabold text-blue-500 mt-1">4.2 <span className="text-sm font-semibold text-slate-500">mins</span></h3>
+                    <p className="text-[11px] text-emerald-500 mt-1">↓ 18% improvement from benchmark</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700">
+                    <p className="text-xs font-semibold text-slate-400">Client Simulation Engine</p>
+                    <h3 className="text-3xl font-extrabold text-emerald-500 mt-1">100% <span className="text-sm font-semibold text-slate-500">Zero-Backend</span></h3>
+                    <p className="text-[11px] text-slate-400 mt-1">Pure JavaScript interval timers</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700">
+                    <p className="text-xs font-semibold text-slate-400">Total Processed Events</p>
+                    <h3 className="text-3xl font-extrabold text-amber-500 mt-1">{alerts.length + 24} <span className="text-sm font-semibold text-slate-500">Events</span></h3>
+                    <p className="text-[11px] text-blue-500 mt-1">99.9% Client buffer integrity</p>
+                  </div>
+                </div>
+
+                {/* Severity Breakdown Bar */}
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-2">Alert Severity Distribution</h4>
+                  <div className="w-full h-4 rounded-full overflow-hidden flex bg-slate-200 dark:bg-slate-700">
+                    <div className="bg-rose-500 h-full" style={{ width: '40%' }} title="Critical: 40%"></div>
+                    <div className="bg-amber-500 h-full" style={{ width: '30%' }} title="High: 30%"></div>
+                    <div className="bg-yellow-400 h-full" style={{ width: '20%' }} title="Moderate: 20%"></div>
+                    <div className="bg-blue-500 h-full" style={{ width: '10%' }} title="Low: 10%"></div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mt-3">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Critical (40%)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> High (30%)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400"></span> Moderate (20%)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Low (10%)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </main>
+          {/* END: MainContentArea */}
+
+
+          {/* ========================================================= */}
+          {/* SIMULATION CONTROLS FLOATING DRAWER (AT-A-GLANCE CONTROL) */}
+          {/* ========================================================= */}
+          <div className="fixed bottom-3 right-3 sm:bottom-5 sm:right-6 bg-white dark:bg-slate-800 rounded-full shadow-2xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 flex items-center gap-2 z-40 text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="hidden sm:inline font-bold text-slate-700 dark:text-slate-200">Simulation:</span>
+            <button 
+              onClick={() => setIsSimulating(!isSimulating)}
+              className="p-1 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold"
+              title={isSimulating ? "Pause" : "Play"}
+            >
+              <i className="w-4 h-4" data-lucide={isSimulating ? "pause" : "play"}></i>
+            </button>
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-full px-1.5 py-0.5">
+              {[1, 2, 5].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setSimSpeed(s)}
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    simSpeed === s ? "bg-blue-500 text-white" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {s}x
+                </button>
+              ))}
+            </div>
+            <button 
+              onClick={() => triggerManualAlert('critical')}
+              className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs"
+            >
+              ⚡ Fire Alert
+            </button>
+          </div>
+
+
+          {/* ========================================================= */}
+          {/* MODAL: ALERT INSPECTION SHEET                             */}
+          {/* ========================================================= */}
+          {inspectingAlert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white dark:bg-slate-850 rounded-[24px] max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-start justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase text-white ${
+                      inspectingAlert.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500'
+                    }`}>
+                      {inspectingAlert.severity}
+                    </span>
+                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">{inspectingAlert.title}</h3>
+                  </div>
+                  <button 
+                    onClick={() => setInspectingAlert(null)}
+                    className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-750 text-slate-500 hover:text-slate-800 flex items-center justify-center text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-3 text-xs text-slate-600 dark:text-slate-300">
+                  <p className="leading-relaxed">{inspectingAlert.description}</p>
+                  
+                  <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40">
+                    <span className="font-bold text-amber-800 dark:text-amber-300">Emergency Advisory:</span>
+                    <p className="mt-0.5 text-amber-700 dark:text-amber-200">{inspectingAlert.advisory}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <span className="text-slate-400">Sector:</span> <strong>{inspectingAlert.region}</strong>
+                    </div>
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <span className="text-slate-400">Wind Velocity:</span> <strong>{inspectingAlert.windSpeed}</strong>
+                    </div>
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <span className="text-slate-400">Rainfall:</span> <strong>{inspectingAlert.rainfall}</strong>
+                    </div>
+                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                      <span className="text-slate-400">Barometer:</span> <strong>{inspectingAlert.pressure}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                  {!inspectingAlert.isAcknowledged ? (
+                    <button
+                      onClick={() => {
+                        handleAcknowledge(inspectingAlert.id);
+                        setInspectingAlert(null);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-blue-500 text-white font-bold text-xs hover:bg-blue-600"
+                    >
+                      Acknowledge Alert
+                    </button>
+                  ) : (
+                    <span className="text-emerald-500 font-bold text-xs">✓ Verified</span>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setCurrentView("resources");
+                      setInspectingAlert(null);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-750 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-200"
+                  >
+                    View Resource Squads →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+          {/* ========================================================= */}
+          {/* ACADEMIC PROJECT DETAILS & TEAM MEMBERS MODAL             */}
+          {/* ========================================================= */}
+          {showProjectModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white dark:bg-slate-850 rounded-[24px] max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 dark:border-slate-700">
+                
+                <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <span className="text-[11px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                      Academic Project Submission
+                    </span>
+                    <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 mt-1">
+                      {PROJECT_INFO.title}
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      {PROJECT_INFO.batch} • {PROJECT_INFO.section} • {PROJECT_INFO.semester} • Date: {PROJECT_INFO.submissionDate}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setShowProjectModal(false)}
+                    className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-750 text-slate-500 hover:text-slate-800 flex items-center justify-center font-bold text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="my-4 p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/40 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-slate-500 font-medium">Faculty Mentor / Guide:</span>
+                    <span className="ml-2 font-bold text-blue-600 dark:text-blue-400 text-sm">{PROJECT_INFO.mentor}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-bold text-[10px]">
+                    APPROVED SPEC
+                  </span>
+                </div>
+
+                {/* Team Members & Roles Table */}
+                <div className="mt-4">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Team Members & Role Allocation</h3>
+                  <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-400">
+                        <tr>
+                          <th className="py-2.5 px-3">S.No.</th>
+                          <th className="py-2.5 px-3">Student Name</th>
+                          <th className="py-2.5 px-3">University Roll No.</th>
+                          <th className="py-2.5 px-3">Role in Project</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {PROJECT_INFO.team.map(member => (
+                          <tr key={member.roll} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                            <td className="py-2.5 px-3 font-semibold text-slate-500">{member.sNo}</td>
+                            <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-100">{member.name}</td>
+                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300 font-mono">{member.roll}</td>
+                            <td className="py-2.5 px-3">
+                              <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold text-[11px]">
+                                {member.role}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Objectives */}
+                <div className="mt-5">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-2">Objectives & Implemented Work</h3>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Animated map showing live disaster locations</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Color-coded banners showing severity (low to critical)</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Resource panel: rescue teams, shelters & supplies</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Live feed displaying incoming disaster alerts</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Fully frontend-based system — no backend server</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Client JavaScript timers simulate real-time live data</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Interactive barometric, wind, and precipitation curves</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500 font-bold">✓</span> Full-page responsive command-center layout</li>
+                  </ul>
+                </div>
+
+                {/* Future Scope */}
+                <div className="mt-5">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-2">Future Scope / Enhancements</h3>
+                  <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    {[
+                      "Live Weather API Integration",
+                      "Historical Alert DB",
+                      "Push SMS/Notifications",
+                      "Responder RBAC Auth",
+                      "Mobile React Native App",
+                      "Multi-Language Localization",
+                      "Predictive AI Storm Path Modeling"
+                    ].map(tag => (
+                      <span key={tag} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300">
+                        • {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+                  <button 
+                    onClick={() => setShowProjectModal(false)}
+                    className="px-4 py-2 rounded-xl bg-blue-500 text-white font-bold text-xs hover:bg-blue-600 shadow-sm"
+                  >
+                    Close Information
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // Mount React App to full-page container
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "storm-disaster-early-warning-board",
+  "version": "1.0.0",
+  "description": "A command-center style board simulating live disaster/weather alerts from a client-generated event feed, with an animated map, severity-tiered banners, and a resource-status panel — computed without any backend.",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx serve .",
+    "build": "echo 'Project ready for deployment'"
+  },
+  "projectInfo": {
+    "title": "Storm & Disaster Early-Warning Board",
+    "batchNo": "Batch No. 2",
+    "section": "Section 3AC",
+    "semester": "Semester 5",
+    "submissionDate": "21/09/26",
+    "facultyMentor": "Anurag Das",
+    "team": [
+      { "sNo": 1, "name": "AKASH SONI", "rollNo": "2415000152", "role": "Team Lead & Frontend Developer" },
+      { "sNo": 2, "name": "AKSHAT KARIDHAL", "rollNo": "2415000165", "role": "UI/UX Designer" },
+      { "sNo": 3, "name": "ANAND RAWAT", "rollNo": "2415000201", "role": "Map & Alert Logic Developer" },
+      { "sNo": 4, "name": "ANANYA KUSHWAH", "rollNo": "2415000208", "role": "Resource Panel & Banner Developer" },
+      { "sNo": 5, "name": "ANKUR THENUA", "rollNo": "2415000240", "role": "Testing & Documentation Lead" }
+    ]
+  },
+  "keywords": [
+    "disaster-early-warning",
+    "weather-tracker",
+    "command-center",
+    "react",
+    "real-time-simulation",
+    "tailwind-css"
+  ],
+  "author": "Anand Rawat & Team",
+  "license": "MIT"
+}
+
